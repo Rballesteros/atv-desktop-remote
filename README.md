@@ -2,7 +2,7 @@
 
 A simple menubar app that allows you to control an Apple TV from your desktop
 
-> **Enhanced Fork** with 25+ critical fixes including memory leak repairs, 50x performance improvements, and modern UI updates. See [What's New](#whats-new-in-v144-december-2025) below.
+> **Enhanced Fork** with 30+ critical fixes including memory leak repairs, 50x performance improvements, glassmorphic design overhaul, and enhanced accessibility. See [What's New](#whats-new-in-v144-december-2025) below.
 
  ![What this application looks like when running in either light or dark mode](screenshot_new.png)
 
@@ -120,6 +120,7 @@ This project is built using:
 **Enhanced Fork**: Maintained by [Rballesteros](https://github.com/Rballesteros)
 - This fork adds critical bug fixes, performance improvements, and modern features
 - See [CHANGELOG.md](CHANGELOG.md) for complete list of enhancements
+- Support this fork: [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/r898283)
 
 ## Contributing
 
@@ -136,14 +137,35 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## What's New in v1.4.4 (December 2025)
 
-This enhanced fork includes **25 critical fixes and improvements** over the original version:
+This enhanced fork includes **30+ critical fixes and improvements** over the original version:
 
-### 🎨 UI Improvements
-- **Modern Icon Design**: Play/Pause, Menu, and TV buttons now use Font Awesome icons
-  - Play button dynamically switches to pause icon when media is playing
+### 🎨 Major UI/UX Overhaul
+
+**Glassmorphic Design System**
+- Modern glassmorphic UI with backdrop filters and refined gradients
+- Subtle shadows and depth perception for both light and dark modes
+- Enhanced button states with smooth cubic-bezier easing animations
+- Updated typography using SF Pro fonts with improved weights and smoothing
+- Redesigned input fields with floating focus states and better contrast
+- Improved dark mode with proper color hierarchy
+
+**Layout & Usability Improvements**
+- Moved ATV dropdown to top alongside quit button for better discoverability
+- Repositioned "Open Keyboard" button below keypad with proper semantics
+- Aligned cancel button in pairing view with top close control
+- Centered input panel with contained layout and improved visual hierarchy
+
+**Icon Design**
+- **Modern Icon System**: Play/Pause, Menu, and TV buttons now use Font Awesome icons
+  - Play button dynamically switches to pause icon when media is playing (▶/⏸)
   - Menu button shows intuitive back chevron (◀)
   - TV button displays recognizable TV icon (📺)
-- Improved button styling and visual consistency
+
+**Window Stability**
+- Set explicit min/max sizes for menubar window (280-340px width, 500-740px height)
+- Input window constraints (520x240 - 600x300)
+- Removed vibrancy effects for more stable rendering across macOS versions
+- Solid backgrounds prevent transparency issues
 
 ### 🐛 Critical Bug Fixes
 
@@ -171,12 +193,31 @@ This enhanced fork includes **25 critical fixes and improvements** over the orig
 - Better error messages and logging
 - Connection timeouts prevent UI freezes (10-second timeout)
 - Improved error visibility
+- Disabled autocomplete, autocapitalize, and spellcheck for cleaner text entry
+- Proper focus management with visibility change handlers
+- Keyboard focus polling optimization (2s interval instead of 1s)
+- Polling properly stops on window hide/blur to prevent unnecessary background work
+
+**Enhanced Accessibility**
+- Added ARIA labels to all remote buttons for screen reader support
+- Proper button semantics (role="toolbar") for the keypad
+- Improved focus management throughout the application
+- VoiceOver/screen reader compatibility tested
+
+**Additional Improvements**
+- **Long Press Animation**: Visual feedback when holding buttons down
+- **Better Reconnection Handling**: Improved automatic reconnection with pyatv
+- **Smart Device Filtering**: Scan results now filter to show only Apple TVs (not HomePods, Macs, etc.)
+- **Electron Upgrade**: Updated to latest Electron version (39.2.6) for better security and performance
+- **Enhanced Install Scripts**: Support for requirements.txt for faster Python dependency installation
+- **UV Package Manager Support**: Optionally uses UV for faster Python environment setup
 
 ### 🔒 Security & Infrastructure
 - Added preload.js foundation for future security improvements
 - GitHub Actions CI/CD workflows for automated building and testing
 - Comprehensive CHANGELOG following Keep a Changelog format
 - Security improvements documented for v1.5.0
+- Updated Electron version for better compatibility and security
 
 ### 📊 Performance Metrics
 - ✅ Stable memory usage during long sessions (no leaks)
