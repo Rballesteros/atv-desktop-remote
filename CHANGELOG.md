@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - UI Improvements
+
+#### Remote Control Icons
+- **Updated Play/Pause button to use icons** (`app/index.html`, `app/web_remote.js`, `app/css/main.css`)
+  - Changed from text "Play" to Font Awesome play icon (▶)
+  - Dynamically switches to pause icon (⏸) when media is playing
+  - More consistent with Apple TV remote design
+  - Updated accessibility label to "Play or Pause"
+  - Added CSS for proper icon centering
+
+- **Updated Menu button to use back chevron** (`app/index.html`, `app/css/main.css`)
+  - Changed from text "Menu" to left chevron icon (◀)
+  - Matches the back button on physical Apple TV remote
+  - Updated accessibility label to "Back or Menu"
+  - Properly centered with inline-block styling
+
+- **Updated TV button to use TV icon** (`app/index.html`, `app/css/main.css`)
+  - Changed from text "TV" to Font Awesome TV icon (📺)
+  - More visual and recognizable
+  - Updated accessibility label to "TV or Home button"
+  - Properly sized and centered
+
 ### Fixed - Critical Issues
 
 #### Memory Leaks

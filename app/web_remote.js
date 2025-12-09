@@ -430,9 +430,11 @@ function _updatePlayState() {
         console.log('Update play state: device not connected');
         return;
     }
+    // Use Font Awesome icons for play/pause instead of text
+    var icon = (device.playing ? '<i class="fas fa-pause"></i>' : '<i class="fas fa-play"></i>')
     var label = (device.playing ? "Pause" : "Play")
     console.log(`Update play state: ${label}`)
-    $(`[data-key="Pause"] .keyText`).html(label);
+    $(`[data-key="play_pause"] .keyText`).html(icon);
 }
 
 var updatePlayState = lodash.debounce(_updatePlayState, 300);
