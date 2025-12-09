@@ -48,6 +48,12 @@ if (!gotTheLock) {
     })
 }
 function createHotkeyWindow() {
+    // TODO: Post-release security hardening (v1.5.0)
+    // - Set contextIsolation: true
+    // - Set nodeIntegration: false
+    // - Remove enableRemoteModule
+    // - Use preload.js with contextBridge
+    // - Refactor renderer to use IPC instead of require()
     hotkeyWindow = new BrowserWindow({
         width: 500,
         height: 500,
@@ -68,6 +74,7 @@ function createHotkeyWindow() {
 }
 
 function createInputWindow() {
+    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
     secondWindow = new BrowserWindow({
         webPreferences: {
             nodeIntegration: true,
@@ -102,6 +109,7 @@ function createInputWindow() {
 }
 
 function createWindow() {
+    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
     mb = menubar({
         preloadWindow: preloadWindow,
         showDockIcon: false,
