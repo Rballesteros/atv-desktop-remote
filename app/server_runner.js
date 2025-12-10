@@ -56,13 +56,25 @@ function killServer() {
         });
         var ksto = setTimeout(() => {
             console.log('killServer timed out')
+            lws.close();
             reject();
         }, 500);
         lws.once('open', function open() {
             console.log('killServer open');
             clearTimeout(ksto);
             lws.send(JSON.stringify({ cmd: 'quit' }))
+            // Close the WebSocket after sending quit command
+            setTimeout(() => {
+                lws.close();
+            }, 100);
             resolve();
+        });
+        // Close on error to prevent leak
+        lws.once('error', function(err) {
+            console.log('killServer WebSocket error:', err);
+            clearTimeout(ksto);
+            lws.close();
+            reject(err);
         });
     })
 }

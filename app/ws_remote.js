@@ -52,6 +52,16 @@ function killServer() {
 
     lws.once('open', function open() {
         lws.send(JSON.stringify({ cmd: 'quit' }))
+        // Close the WebSocket after sending quit command
+        setTimeout(() => {
+            lws.close();
+        }, 100);
+    });
+
+    // Close on error to prevent leak
+    lws.once('error', function(err) {
+        console.log('killServer WebSocket error:', err);
+        lws.close();
     });
 }
 
@@ -60,8 +70,16 @@ function reconnect() {
     ws_timeout = setTimeout(() => {
         ws_timeout = false;
         try {
-            if (ws) ws.removeAllListeners();
-        } catch (ex) {}
+            if (ws) {
+                ws.removeAllListeners();
+                // Properly close the WebSocket before reconnecting
+                if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            }
+        } catch (ex) {
+            console.log('Error during reconnect cleanup:', ex);
+        }
 
         startWebsocket();
     }, ws_timeout_interval)
@@ -98,43 +116,51 @@ function startWebsocket() {
 
     ws.on('message', function message(data) {
         console.log('received: %s', data);
-        var j = JSON.parse(data);
-        if (j.command == "scanResult") {
-            console.log(`Results: ${j.data}`)
-            createDropdown(j.data);
-        }
-        if (j.command == "pairCredentials") {
-            console.log("pairCredentials", ws_pairDevice, j.data);
-            saveRemote(ws_pairDevice, j.data);
-            localStorage.setItem('atvcreds', JSON.stringify(getCreds(pairDevice)));
-            connectToATV();
-        }
-        if (j.command == "connected") {
-            atv_connected = true;
-            connection_failure = false;
-            atv_events.emit("connected", atv_connected);
-        }
-        if (j.command == "is_connected") {
-            console.log('got_is_connected');
-            atv_connected = !!(j.data)
-            atv_events.emit("connected", atv_connected);
-        }
-        if (j.command == "connection_failure") {
-            console.log(`connection_failure: ${j.data}`)
-            atv_connected = false;
-            connection_failure = true;
-            atv_events.emit("connection_failure", j.data)
-        }
-        if (j.command == "startPair2") {
-            $("#pairStepNum").html("2");
-            $("#pairProtocolName").html("Companion");
-        }
-        if (j.command == "current-text") {
-            console.log(`current text: ${j.data}`)
-            ipcRenderer.invoke('current-text', j.data);
-        }
-        if (j.command == "kbfocus-status") {
-            ipcRenderer.invoke('kbfocus-status', j.data);
+
+        // Wrap JSON parsing in try-catch to prevent crashes from malformed messages
+        try {
+            var j = JSON.parse(data);
+
+            if (j.command == "scanResult") {
+                console.log(`Results: ${j.data}`)
+                createDropdown(j.data);
+            }
+            if (j.command == "pairCredentials") {
+                console.log("pairCredentials", ws_pairDevice, j.data);
+                saveRemote(ws_pairDevice, j.data);
+                localStorage.setItem('atvcreds', JSON.stringify(getCreds(pairDevice)));
+                _connectToATV(); // Use debounced version to prevent race conditions
+            }
+            if (j.command == "connected") {
+                atv_connected = true;
+                connection_failure = false;
+                atv_events.emit("connected", atv_connected);
+            }
+            if (j.command == "is_connected") {
+                console.log('got_is_connected');
+                atv_connected = !!(j.data)
+                atv_events.emit("connected", atv_connected);
+            }
+            if (j.command == "connection_failure") {
+                console.log(`connection_failure: ${j.data}`)
+                atv_connected = false;
+                connection_failure = true;
+                atv_events.emit("connection_failure", j.data)
+            }
+            if (j.command == "startPair2") {
+                $("#pairStepNum").html("2");
+                $("#pairProtocolName").html("Companion");
+            }
+            if (j.command == "current-text") {
+                console.log(`current text: ${j.data}`)
+                ipcRenderer.invoke('current-text', j.data);
+            }
+            if (j.command == "kbfocus-status") {
+                ipcRenderer.invoke('kbfocus-status', j.data);
+            }
+        } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+            console.error('Invalid message data:', data);
         }
     });
 }
@@ -144,7 +170,14 @@ function startWebsocket() {
 
 function ws_is_connected() {
     return new Promise((resolve, reject) => {
+        // Add timeout to prevent infinite hang
+        const timeout = setTimeout(() => {
+            console.log('ws_is_connected: timeout after 5 seconds');
+            reject(new Error('is_connected timeout'));
+        }, 5000);
+
         atv_events.once("connected", ic => {
+            clearTimeout(timeout);
             if (ic) connection_failure = false;
             resolve(ic);
         })
@@ -178,8 +211,19 @@ function ws_connect(creds) {
     ws_connecting = true;
     return new Promise((resolve, reject) => {
         console.log(`ws_connect: ${creds}`)
+
+        // Set a timeout to prevent infinite hang
+        const connectionTimeout = setTimeout(() => {
+            ws_connecting = false;
+            ws_start_tm = false;
+            connection_failure = true;
+            console.log('ws_connect: connection timeout after 10 seconds');
+            reject(new Error('Connection timeout'));
+        }, 10000); // 10 second timeout
+
         sendMessage("connect", creds)
         atv_events.once("connected", ic => {
+            clearTimeout(connectionTimeout);
             ws_connecting = false;
             ws_start_tm = false;
             if (ic) {
@@ -188,6 +232,7 @@ function ws_connect(creds) {
             } else {
                 connection_failure = true;
                 startScan();
+                reject(new Error('Connection failed'));
             }
         });
     })
@@ -236,6 +281,11 @@ function checkWSConnection() {
 
 function ws_init() {
     console.log('ws_init');
+    // Clear existing watchdog if it exists
+    if (ws_watchdog) {
+        clearInterval(ws_watchdog);
+        ws_watchdog = false;
+    }
     startWebsocket();
     setTimeout(() => {
         // not sure if needed, but server start now tries to install required python packages which can be slow
@@ -244,6 +294,30 @@ function ws_init() {
         }, 5000);
     }, 120000) // bump this up to 2 minutes
 
+}
+
+// Add cleanup function to properly stop watchdog and close connections
+function ws_cleanup() {
+    console.log('ws_cleanup: cleaning up resources');
+    if (ws_watchdog) {
+        clearInterval(ws_watchdog);
+        ws_watchdog = false;
+    }
+    if (ws_timeout) {
+        clearTimeout(ws_timeout);
+        ws_timeout = false;
+    }
+    if (ws) {
+        try {
+            ws.removeAllListeners();
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.close();
+            }
+        } catch (ex) {
+            console.log('Error during ws cleanup:', ex);
+        }
+        ws = false;
+    }
 }
 
 function incReady() {
