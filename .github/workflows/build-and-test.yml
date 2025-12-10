@@ -57,11 +57,11 @@ jobs:
 
     - name: Build application (macOS)
       if: runner.os == 'macOS'
-      run: npm run build
+      run: npm run build -- --publish never
 
     - name: Build application (Windows)
       if: runner.os == 'Windows'
-      run: npm run build:win
+      run: npm run build:win -- --publish never
 
     - name: Upload build artifacts (macOS)
       if: runner.os == 'macOS'
