@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   release:
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       matrix:
         include:
