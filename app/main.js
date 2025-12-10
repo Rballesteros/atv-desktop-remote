@@ -29,7 +29,8 @@ console._log = console.log;
 console.log = function() {
     let txt = util.format(...[].slice.call(arguments)) + '\n'
     process.stdout.write(txt);
-    if (win && win.webContents) {
+    // Check if webContents is destroyed before trying to send
+    if (win && win.webContents && !win.webContents.isDestroyed()) {
         win.webContents.send('mainLog', txt);
     }
 }
@@ -47,6 +48,12 @@ if (!gotTheLock) {
     })
 }
 function createHotkeyWindow() {
+    // TODO: Post-release security hardening (v1.5.0)
+    // - Set contextIsolation: true
+    // - Set nodeIntegration: false
+    // - Remove enableRemoteModule
+    // - Use preload.js with contextBridge
+    // - Refactor renderer to use IPC instead of require()
     hotkeyWindow = new BrowserWindow({
         width: 500,
         height: 500,
@@ -67,6 +74,7 @@ function createHotkeyWindow() {
 }
 
 function createInputWindow() {
+    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
     secondWindow = new BrowserWindow({
         webPreferences: {
             nodeIntegration: true,
@@ -101,6 +109,7 @@ function createInputWindow() {
 }
 
 function createWindow() {
+    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
     mb = menubar({
         preloadWindow: preloadWindow,
         showDockIcon: false,
@@ -129,7 +138,8 @@ function createWindow() {
        
 
         win.on('close', () => {
-            console.log('window closed, quitting')
+            // Use original console.log during shutdown to avoid destroyed webContents
+            console._log('window closed, quitting')
             app.exit();
         })
         win.on('show', () => {
@@ -202,9 +212,15 @@ function createWindow() {
             win.webContents.send('kbfocus');
         })
 
-        powerMonitor.addListener('resume', event => {
+        // Store listener references for cleanup
+        var powerResumeHandler = event => {
             win.webContents.send('powerResume');
-        })
+        };
+        powerMonitor.addListener('resume', powerResumeHandler);
+
+        var serverStartedHandler = () => {
+            win.webContents.send("wsserver_started")
+        };
 
         win.on('ready-to-show', () => {
             console.log('ready to show')
@@ -218,10 +234,16 @@ function createWindow() {
             win.webContents.send("wsserver_started")
         } else {
             console.log(`server waiting for event`)
-            server_runner.server_events.on("started", () => {
-                win.webContents.send("wsserver_started")
-            })
+            server_runner.server_events.on("started", serverStartedHandler)
         }
+
+        // Add cleanup when window closes
+        win.on('closed', () => {
+            // Use original console.log since webContents is destroyed at this point
+            console._log('Cleaning up event listeners');
+            powerMonitor.removeListener('resume', powerResumeHandler);
+            server_runner.server_events.removeListener("started", serverStartedHandler);
+        });
     })
 }
 
@@ -230,8 +252,8 @@ function showWindow() {
     try {
         app.show();
     } catch (err) {
-        //console.log(err);
-        // this happens in windows, doesn't seem to affect anything though
+        // This happens in Windows, doesn't seem to affect anything though
+        console.log('app.show() error (non-critical on Windows):', err.message);
     }
     mb.showWindow();
     setTimeout(() => {
@@ -246,8 +268,8 @@ function hideWindow() {
     try {
         app.hide();
     } catch (err) {
-        // console.log(err);
-        // not sure if this affects windows like app.show does.
+        // Not sure if this affects Windows like app.show does
+        console.log('app.hide() error (possibly non-critical):', err.message);
     }
 }
 
@@ -348,6 +370,14 @@ app.whenReady().then(() => {
         console.log(`python exists: ${r}`)
     }).catch(err => {
         console.log(`python does not exist: ${err}`)
+        // Show user-friendly error message when Python is not found
+        const { dialog } = require('electron');
+        dialog.showErrorBox(
+            'Python Not Found',
+            'Python is required to run this application but was not found on your system.\n\n' +
+            'Please install Python 3 and restart the application.\n\n' +
+            'Download from: https://www.python.org/downloads/'
+        );
     })
 
     createWindow();

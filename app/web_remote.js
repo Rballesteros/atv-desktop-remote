@@ -100,49 +100,111 @@ const keyDesc = {
     't': 'TV Button',
     'l': 'Long-press TV Button'
 }
+// Store handler references for cleanup
+var ipcHandlers = {
+    shortcutWin: null,
+    scanDevicesResult: null,
+    pairCredentials: null,
+    gotStartPair: null,
+    mainLog: null,
+    powerResume: null,
+    sendCommand: null,
+    kbfocus: null,
+    wsserver_started: null,
+    inputChange: null
+};
+
 function initIPC() {
-    ipcRenderer.on('shortcutWin', (event) => {
+    // Remove existing listeners before adding new ones
+    cleanupIPC();
+
+    ipcHandlers.shortcutWin = (event) => {
         handleDarkMode();
         toggleAltText(true);
-    })
-    
-    ipcRenderer.on('scanDevicesResult', (event, ks) => {
+    };
+    ipcRenderer.on('shortcutWin', ipcHandlers.shortcutWin);
+
+    ipcHandlers.scanDevicesResult = (event, ks) => {
         createDropdown(ks);
-    })
-    
-    ipcRenderer.on('pairCredentials', (event, arg) => {
+    };
+    ipcRenderer.on('scanDevicesResult', ipcHandlers.scanDevicesResult);
+
+    ipcHandlers.pairCredentials = (event, arg) => {
         saveRemote(pairDevice, arg);
         localStorage.setItem('atvcreds', JSON.stringify(getCreds(pairDevice)));
-        connectToATV();
-    })
-    
-    ipcRenderer.on('gotStartPair', () => {
+        _connectToATV(); // Use debounced version to prevent race conditions
+    };
+    ipcRenderer.on('pairCredentials', ipcHandlers.pairCredentials);
+
+    ipcHandlers.gotStartPair = () => {
         console.log('gotStartPair');
-    })
-    
-    ipcRenderer.on('mainLog', (event, txt) => {
+    };
+    ipcRenderer.on('gotStartPair', ipcHandlers.gotStartPair);
+
+    ipcHandlers.mainLog = (event, txt) => {
         console.log('[ main ] %s', txt.substring(0, txt.length - 1));
-    })
-    
-    ipcRenderer.on('powerResume', (event, arg) => {
-        connectToATV();
-    })
-    
-    ipcRenderer.on('sendCommand', (event, key) => {
+    };
+    ipcRenderer.on('mainLog', ipcHandlers.mainLog);
+
+    ipcHandlers.powerResume = (event, arg) => {
+        _connectToATV(); // Use debounced version to prevent race conditions
+    };
+    ipcRenderer.on('powerResume', ipcHandlers.powerResume);
+
+    ipcHandlers.sendCommand = (event, key) => {
         console.log(`sendCommand from main: ${key}`)
         sendCommand(key);
-    })
-    ipcRenderer.on('kbfocus', () => {
+    };
+    ipcRenderer.on('sendCommand', ipcHandlers.sendCommand);
+
+    ipcHandlers.kbfocus = () => {
         sendMessage('kbfocus')
-    })
-    
-    ipcRenderer.on('wsserver_started', () => {
+    };
+    ipcRenderer.on('kbfocus', ipcHandlers.kbfocus);
+
+    ipcHandlers.wsserver_started = () => {
         ws_server_started();
-    })
-    
-    ipcRenderer.on('input-change', (event, data) => {
+    };
+    ipcRenderer.on('wsserver_started', ipcHandlers.wsserver_started);
+
+    ipcHandlers.inputChange = (event, data) => {
         sendMessage("settext", {text: data});
-    });
+    };
+    ipcRenderer.on('input-change', ipcHandlers.inputChange);
+}
+
+// Cleanup function to remove IPC listeners
+function cleanupIPC() {
+    if (ipcHandlers.shortcutWin) {
+        ipcRenderer.removeListener('shortcutWin', ipcHandlers.shortcutWin);
+    }
+    if (ipcHandlers.scanDevicesResult) {
+        ipcRenderer.removeListener('scanDevicesResult', ipcHandlers.scanDevicesResult);
+    }
+    if (ipcHandlers.pairCredentials) {
+        ipcRenderer.removeListener('pairCredentials', ipcHandlers.pairCredentials);
+    }
+    if (ipcHandlers.gotStartPair) {
+        ipcRenderer.removeListener('gotStartPair', ipcHandlers.gotStartPair);
+    }
+    if (ipcHandlers.mainLog) {
+        ipcRenderer.removeListener('mainLog', ipcHandlers.mainLog);
+    }
+    if (ipcHandlers.powerResume) {
+        ipcRenderer.removeListener('powerResume', ipcHandlers.powerResume);
+    }
+    if (ipcHandlers.sendCommand) {
+        ipcRenderer.removeListener('sendCommand', ipcHandlers.sendCommand);
+    }
+    if (ipcHandlers.kbfocus) {
+        ipcRenderer.removeListener('kbfocus', ipcHandlers.kbfocus);
+    }
+    if (ipcHandlers.wsserver_started) {
+        ipcRenderer.removeListener('wsserver_started', ipcHandlers.wsserver_started);
+    }
+    if (ipcHandlers.inputChange) {
+        ipcRenderer.removeListener('input-change', ipcHandlers.inputChange);
+    }
 }
 
 window.addEventListener('blur', e => {
@@ -256,15 +318,11 @@ window.addEventListener('keydown', e => {
         return;
     }
     if ($("#cancelPairing").is(":visible")) return;
-    var fnd = false;
-    Object.keys(ws_keymap).forEach(k => {
-        if (key == k) {
-            fnd = true;
-            sendCommand(k, shifted);
-            e.preventDefault();
-            return false;
-        }
-    })
+    // Use 'in' operator for O(1) lookup instead of O(n) forEach
+    if (key in ws_keymap) {
+        sendCommand(key, shifted);
+        e.preventDefault();
+    }
 
 })
 
@@ -347,23 +405,36 @@ function createATVDropdown() {
             } else {
                 pairDevice = vl;
                 localStorage.setItem('atvcreds', JSON.stringify(getCreds(vl)));
-                connectToATV();
+                _connectToATV(); // Use debounced version to prevent race conditions
             }
         }
     })
 }
 
 function showAndFade(text) {
-    $("#cmdFade").html(text)
-    $("#cmdFade").stop(true).fadeOut(0).css({ "visibility": "visible" }).fadeIn(100).delay(400).fadeOut(200, function() {
+    // Check if element exists before animating (performance optimization)
+    var $cmdFade = $("#cmdFade");
+    if ($cmdFade.length === 0) {
+        console.log('showAndFade: #cmdFade element not found');
+        return;
+    }
+    $cmdFade.html(text);
+    $cmdFade.stop(true).fadeOut(0).css({ "visibility": "visible" }).fadeIn(100).delay(400).fadeOut(200, function() {
         $(this).css({ "display": "flex", "visibility": "hidden" });
     });
 }
 
 function _updatePlayState() {
+    // Add null check to prevent runtime errors if device is not connected
+    if (!device) {
+        console.log('Update play state: device not connected');
+        return;
+    }
+    // Use Font Awesome icons for play/pause instead of text
+    var icon = (device.playing ? '<i class="fas fa-pause"></i>' : '<i class="fas fa-play"></i>')
     var label = (device.playing ? "Pause" : "Play")
     console.log(`Update play state: ${label}`)
-    $(`[data-key="Pause"] .keyText`).html(label);
+    $(`[data-key="play_pause"] .keyText`).html(icon);
 }
 
 var updatePlayState = lodash.debounce(_updatePlayState, 300);
@@ -451,70 +522,88 @@ function submitCode() {
     }
 }
 
+// Move long press state objects to module scope to prevent memory leaks
+var longPressTimers = {};
+var longPressProgress = {};
+var isLongPressing = {};
+
+function cleanupLongPressState() {
+    // Clear all existing timers and intervals
+    Object.keys(longPressTimers).forEach(key => {
+        if (longPressTimers[key]) {
+            clearTimeout(longPressTimers[key]);
+        }
+    });
+    Object.keys(longPressProgress).forEach(key => {
+        if (longPressProgress[key]) {
+            clearInterval(longPressProgress[key]);
+        }
+    });
+
+    // Reset all state objects
+    longPressTimers = {};
+    longPressProgress = {};
+    isLongPressing = {};
+}
+
 function showKeyMap() {
     $("#initText").hide();
     $(".directionTable").fadeIn();
     $("#atvDropdownContainerTop").show();
     $("#topTextKBLink").addClass('kb-visible');
     scheduleResize();
-    
-    var longPressTimers = {};
-    var longPressProgress = {};
-    var isLongPressing = {};
-    
+
+    // Clean up existing state before re-initializing
+    cleanupLongPressState();
+
     $("[data-key]").off('mousedown mouseup mouseleave');
     
     $("[data-key]").on('mousedown', function(e) {
         var key = $(this).data('key');
         var $button = $(this);
-        
+
         if (longPressTimers[key]) {
             clearTimeout(longPressTimers[key]);
             clearInterval(longPressProgress[key]);
         }
-        
+
         var progressValue = 0;
         isLongPressing[key] = true;
-        
+
+        // Cache expensive DOM queries outside the interval (performance optimization)
+        var computedStyle = window.getComputedStyle($button[0]);
+        var bgColor = computedStyle.backgroundColor;
+
+        if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
+            var isDarkMode = $('body').hasClass('darkMode');
+            bgColor = isDarkMode ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
+        }
+
         $button.addClass('pressing');
         longPressProgress[key] = setInterval(() => {
             if (!isLongPressing[key]) return;
-            
-            progressValue += 2;    
+
+            progressValue += 2;
             var progressPercent = Math.min(progressValue, 100);
             var radiusPercent = 100 - progressPercent;
 
-            var computedStyle = window.getComputedStyle($button[0]);
-            var bgColor = computedStyle.backgroundColor;
-            
-            if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
-                var isDarkMode = $('body').hasClass('darkMode');
-                bgColor = isDarkMode ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
-            }
-            
-            $button.css('background', `radial-gradient(circle, transparent ${radiusPercent}%, ${bgColor} ${radiusPercent}%)`);            
+            // Use cached bgColor instead of querying DOM every 20ms
+            $button.css('background', `radial-gradient(circle, transparent ${radiusPercent}%, ${bgColor} ${radiusPercent}%)`);
 
             var scale = 1 + (progressPercent * 0.001);
             $button.css('transform', `scale(${scale})`);
-            
+
         }, 20); 
 
         longPressTimers[key] = setTimeout(() => {
             if (!isLongPressing[key]) return;
-            
+
             clearInterval(longPressProgress[key]);
 
             $button.addClass('longpress-triggered');
 
-            var computedStyle = window.getComputedStyle($button[0]);
-            var successColor = computedStyle.backgroundColor;
-            
-            if (successColor === 'rgba(0, 0, 0, 0)' || successColor === 'transparent') {
-                var isDarkMode = $('body').hasClass('darkMode');
-                successColor = isDarkMode ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
-            }
-            
-            $button.css('background', successColor);
+            // Reuse cached bgColor instead of querying DOM again (performance optimization)
+            $button.css('background', bgColor);
             
             console.log(`Long press triggered for: ${key}`);
             sendCommand(key, true); // true indicates long press
@@ -580,6 +669,11 @@ function showKeyMap() {
 var connecting = false;
 
 function handleMessage(msg) {
+    // Add null check to prevent runtime errors if device is not connected
+    if (!device) {
+        console.log('handleMessage: device not connected, ignoring message');
+        return;
+    }
     device.lastMessages.push(JSON.parse(JSON.stringify(msg)));
     while (device.lastMessages.length > 100) device.lastMessages.shift();
     if (msg.type == 4) {
@@ -823,7 +917,7 @@ async function init() {
 
     if (creds && creds.credentials && creds.identifier) {
         atv_credentials = creds;
-        connectToATV();
+        _connectToATV(); // Use debounced version to prevent race conditions
     } else {
         startScan();
     }

@@ -1,9 +1,19 @@
 {
     "name": "atv-mac-remote",
-    "version": "1.4.3",
+    "version": "1.4.4",
     "main": "app/main.js",
-    "description": "ATV Remote",
+    "description": "ATV Remote - A menubar app to control Apple TV from your desktop",
     "productName": "ATV Remote",
+    "license": "MIT",
+    "author": "bsharper",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Rballesteros/atv-desktop-remote.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Rballesteros/atv-desktop-remote/issues"
+    },
+    "homepage": "https://github.com/Rballesteros/atv-desktop-remote#readme",
     "build": {
         "productName": "ATV Remote",
         "appId": "com.electron.atvMacRemote",
@@ -30,7 +40,7 @@
     },
     "dependencies": {
         "@electron/remote": "^2.1.3",
-        "menubar": "^9.5.2"
+        "menubar": "github:Rballesteros/menubar-enhanced#master"
     },
     "pnpm": {
         "onlyBuiltDependencies": [
