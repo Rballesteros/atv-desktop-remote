@@ -9,22 +9,22 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ELECTRON_BUILDER_PUBLISH: never
+  build:
     strategy:
       matrix:
         include:
           - os: macos-latest
             platform: macos
             arch: x64
+            build_cmd: npm run build
           - os: macos-latest
             platform: macos
             arch: arm64
+            build_cmd: npm run build-arm
           - os: windows-latest
             platform: windows
             arch: x64
+            build_cmd: npm run build:win
 
     runs-on: ${{ matrix.os }}
 
@@ -48,43 +48,46 @@ jobs:
         npm ci
         cd app && npm ci
 
-    - name: Build for macOS (Intel)
-      if: matrix.platform == 'macos' && matrix.arch == 'x64'
-      run: npm run build -- --publish never
+    - name: Build application
+      run: ${{ matrix.build_cmd }} -- --publish never
 
-    - name: Build for macOS (Apple Silicon)
-      if: matrix.platform == 'macos' && matrix.arch == 'arm64'
-      run: npm run build-arm -- --publish never
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.platform }}-${{ matrix.arch }}
+        path: |
+          dist/*.dmg
+          dist/*.exe
+          dist/*.zip
+        retention-days: 1
 
-    - name: Build for Windows
-      if: matrix.platform == 'windows'
-      run: npm run build:win -- --publish never
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
 
     - name: Get version from tag
       id: get_version
-      shell: bash
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-    - name: Upload Release Assets (macOS Intel)
-      if: matrix.platform == 'macos' && matrix.arch == 'x64'
+    - name: Display structure of downloaded files
+      run: ls -R artifacts
+
+    - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         name: Release v${{ steps.get_version.outputs.VERSION }}
         draft: true
         generate_release_notes: true
         fail_on_unmatched_files: false
-        files: dist/*
-
-    - name: Upload Release Assets (macOS ARM64)
-      if: matrix.platform == 'macos' && matrix.arch == 'arm64'
-      uses: softprops/action-gh-release@v1
-      with:
-        fail_on_unmatched_files: false
-        files: dist/*
-
-    - name: Upload Release Assets (Windows)
-      if: matrix.platform == 'windows'
-      uses: softprops/action-gh-release@v1
-      with:
-        fail_on_unmatched_files: false
-        files: dist/*
+        files: |
+          artifacts/macos-x64/*.dmg
+          artifacts/macos-x64/*.zip
+          artifacts/macos-arm64/*.dmg
+          artifacts/macos-arm64/*.zip
+          artifacts/windows-x64/*.exe
