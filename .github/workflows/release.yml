@@ -55,10 +55,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.platform }}-${{ matrix.arch }}
-        path: |
-          dist/*.dmg
-          dist/*.exe
-          dist/*.zip
+        path: dist/*
         retention-days: 1
 
   release:
@@ -83,6 +80,21 @@ jobs:
         mkdir -p release-files
         find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" \) -exec cp {} release-files/ \;
         ls -lh release-files/
+
+    - name: Delete existing draft release if exists
+      continue-on-error: true
+      run: |
+        RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
+          --jq '.[] | select(.tag_name == "${{ github.ref_name }}" and .draft == true) | .id' 2>/dev/null || echo "")
+
+        if [ -n "$RELEASE_ID" ]; then
+          echo "Deleting existing draft release ID: $RELEASE_ID"
+          gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
+        else
+          echo "No existing draft release found"
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
