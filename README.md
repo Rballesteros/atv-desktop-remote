@@ -24,23 +24,45 @@ Download the latest version for your platform:
 
 ## Usage
 
- 1. Keys are mapped to the keyboard when the application is open (pressing return or enter on the keyboard for select, delete for Menu, etc).
- 2. Press `Option`, or `Alt` on Windows, to see what the characters are mapped to when the application is open.
- 3. Long press buttons now works to simulate long presses on the remote
+### Getting Started
+1. The application runs in the menubar. Look for a tiny remote icon and click on it. Right-click for more options.
+2. The first time the app runs it will need to pair with an Apple TV. You can pair with more than one.
+3. After pairing, select your Apple TV from the dropdown and start controlling it!
+
+### Keyboard Shortcuts
+
+**Global Shortcuts (work from anywhere on your system):**
+- **macOS**: `Cmd+Ctrl+R` - Toggle remote window
+- **Windows/Linux**: `Super+Shift+R` (or `Win+Shift+R`) - Toggle remote window
+
+**Remote Control Shortcuts (when app window is focused):**
+
+| Key | Action |
+|-----|--------|
+| **Arrow Keys** | Navigate (↑ ↓ ← →) |
+| **Enter** / **Return** | Select / OK |
+| **Space** | Play / Pause |
+| **Backspace** / **Escape** | Menu / Back |
+| **t** | TV / Home button |
+| **l** | Long press TV / Home button |
+| **[** | Skip backward / Previous track |
+| **]** | Skip forward / Next track |
+| **g** | Top menu |
+| **k** | Open keyboard input |
+| **h** | Hide app window |
+| **q** (press 3x) | Quit application |
+
+**Helper Shortcuts:**
+- **Hold Alt** (Windows) or **Option** (macOS) - Display all keyboard mappings on buttons
+
+### Long Press Feature
+- Click and **hold** any button for long-press actions
+- Visual progress indicator shows during long press
+- Useful for accessing additional Apple TV functions
  
  <p align="center">
   <img src="buttonpress.gif" alt="long press button animation" width="200"/>
 </p>
- 
- 
- 
- ## Running
-
- 1. Run `npm install` (`yarn` and `pnpm` should also work)
- 2. Run `npm start`
-3. The application runs in the menubar. Look for a tiny remote icon and click on it. Right-click for more options.
-4. The first time the app runs it will need to pair with an Apple TV. You can pair with more than one.
-5. Press `Cmd+Shift+R` to open the application from anywhere. On Windows its `Win+Shift+R`
 
 ## Building
 
