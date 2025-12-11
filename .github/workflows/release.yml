@@ -78,6 +78,12 @@ jobs:
     - name: Display structure of downloaded files
       run: ls -R artifacts
 
+    - name: Prepare release files
+      run: |
+        mkdir -p release-files
+        find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" \) -exec cp {} release-files/ \;
+        ls -lh release-files/
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -85,9 +91,4 @@ jobs:
         draft: true
         generate_release_notes: true
         fail_on_unmatched_files: false
-        files: |
-          artifacts/macos-x64/*.dmg
-          artifacts/macos-x64/*.zip
-          artifacts/macos-arm64/*.dmg
-          artifacts/macos-arm64/*.zip
-          artifacts/windows-x64/*.exe
+        files: release-files/*
