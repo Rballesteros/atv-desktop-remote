@@ -215,11 +215,9 @@ window.addEventListener('beforeunload', async e => {
     delete e['returnValue'];
     try {
         ipcRenderer.invoke('debug', 'beforeunload called')
-        if (!device) return;
-        device.removeAllListeners('message');
-        ipcRenderer.invoke('debug', 'messages unregistered')
-        await device.closeConnection()
-        ipcRenderer.invoke('debug', 'connection closed')
+        // Clean up WebSocket connection
+        ws_cleanup();
+        ipcRenderer.invoke('debug', 'WebSocket cleaned up')
     } catch (err) {
         console.log(err);
         //ipcRenderer.invoke('debug', `Error: ${err}`)
@@ -438,9 +436,17 @@ async function sendCommand(k, shifted) {
     if (typeof shifted === 'undefined') shifted = false;
     console.log(`sendCommand: ${k}`)
     if (k == 'Pause') k = 'Space';
+
+    // Map keyboard key to command, or if k is already a command (e.g., from button click), use it directly
     var rcmd = ws_keymap[k];
-    if (Object.values(ws_keymap).indexOf(k) > -1) rcmd = k;
-    if (typeof(rcmd) === 'function') rcmd = rcmd(device);
+    if (!rcmd && Object.values(ws_keymap).indexOf(k) > -1) {
+        // k is not a key in the map, but is a value (command name) - use it directly
+        rcmd = k;
+    }
+    if (!rcmd) {
+        console.warn(`Unknown command: ${k}`);
+        return;
+    }
 
     var classkey = rcmd;
     if (classkey == 'Play') classkey = 'Pause';
@@ -803,7 +809,21 @@ function _getCreds(nm) {
 
 function getCreds(nm) {
     var r = _getCreds(nm);
-    while (typeof r == 'string') r = JSON.parse(r);
+    var maxIterations = 10;
+    var iterations = 0;
+    while (typeof r == 'string' && iterations < maxIterations) {
+        try {
+            r = JSON.parse(r);
+            iterations++;
+        } catch (e) {
+            console.error('Error parsing credentials:', e);
+            return {};
+        }
+    }
+    if (iterations >= maxIterations) {
+        console.error('Credentials string parsing depth exceeded');
+        return {};
+    }
     return r;
 }
 
@@ -953,7 +973,8 @@ var tryThemeAddCount = 0;
 function addThemeListener() {
     try {
         if (nativeTheme) {
-            nativeTheme.removeAllListeners();
+            // Only remove the specific 'updated' listener to avoid affecting other listeners
+            nativeTheme.removeListener('updated', themeUpdated);
             nativeTheme.on('updated', themeUpdated);
         }
     } catch (err) {
