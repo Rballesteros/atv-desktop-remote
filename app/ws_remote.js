@@ -28,13 +28,19 @@ var ws_url = 'ws://localhost:8765'
 
 var atv_events = new EventEmitter();
 var pending = []
+var MAX_PENDING_MESSAGES = 100; // Prevent memory leak from unbounded growth
 
 var ws_timeout_interval = 800;
 
 function sendMessage(command, data) {
     if (typeof data == "undefined") data = "";
     if (!ws) {
-        pending.push([command, data]);
+        // Prevent pending array from growing indefinitely
+        if (pending.length < MAX_PENDING_MESSAGES) {
+            pending.push([command, data]);
+        } else {
+            console.warn('Pending messages queue full, dropping message:', command);
+        }
         return;
     }
     while (pending.length > 0) {
@@ -93,7 +99,10 @@ function startWebsocket() {
     ws.once('open', function open() {
         ws_connected = true;
         console.log('ws open');
-        if (scanWhenOpen) ws_startScan();
+        if (scanWhenOpen) {
+            scanWhenOpen = false; // Reset flag after use
+            ws_startScan();
+        }
         //sendMessage("scan");
         checkEnv();
         init().then(() => {
@@ -128,7 +137,7 @@ function startWebsocket() {
             if (j.command == "pairCredentials") {
                 console.log("pairCredentials", ws_pairDevice, j.data);
                 saveRemote(ws_pairDevice, j.data);
-                localStorage.setItem('atvcreds', JSON.stringify(getCreds(pairDevice)));
+                localStorage.setItem('atvcreds', JSON.stringify(getCreds(ws_pairDevice)));
                 _connectToATV(); // Use debounced version to prevent race conditions
             }
             if (j.command == "connected") {

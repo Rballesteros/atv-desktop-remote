@@ -28,9 +28,9 @@ function initializeRemote() {
 
 
 const path = require('path');
-var device = false;
+// Removed: var device = false; // Dead code - never used
 var qPresses = 0;
-var playstate = false;
+// Removed: var playstate = false; // Dead code - never used
 var previousKeys = []
 
 const ws_keymap = {
@@ -498,7 +498,7 @@ async function askQuestion(msg) {
 
 
 function startPairing(dev) {
-    atv_connected = false;
+    // atv_connected state is managed by ws_remote.js through events
     $("#initText").hide();
     //setStatus("Enter the pairing code");
     $("#results").hide();
@@ -668,45 +668,50 @@ function showKeyMap() {
 
 var connecting = false;
 
-function handleMessage(msg) {
-    // Add null check to prevent runtime errors if device is not connected
-    if (!device) {
-        console.log('handleMessage: device not connected, ignoring message');
-        return;
-    }
-    device.lastMessages.push(JSON.parse(JSON.stringify(msg)));
-    while (device.lastMessages.length > 100) device.lastMessages.shift();
-    if (msg.type == 4) {
-        try {
-            device.bundleIdentifier = msg.payload.playerPath.client.bundleIdentifier;
-            var els = device.bundleIdentifier.split('.')
-            var nm = els[els.length - 1];
-        } catch (err) {}
-        if (msg && msg.payload && msg.payload.playbackState) {
-            device.playing = msg.payload.playbackState == 1;
-            device.lastMessage = JSON.parse(JSON.stringify(msg))
-            _updatePlayState();
-        }
-        if (msg && msg.payload && msg.payload.playbackQueue && msg.payload.playbackQueue.contentItems && msg.payload.playbackQueue.contentItems.length > 0) {
-            console.log('got playback item');
-            device.playbackItem = JSON.parse(JSON.stringify(msg.payload.playbackQueue.contentItems[0]));
-        }
-    }
-}
+// Dead code - handleMessage was never called, device was never initialized
+// function handleMessage(msg) {
+//     // Add null check to prevent runtime errors if device is not connected
+//     if (!device) {
+//         console.log('handleMessage: device not connected, ignoring message');
+//         return;
+//     }
+//     device.lastMessages.push(JSON.parse(JSON.stringify(msg)));
+//     while (device.lastMessages.length > 100) device.lastMessages.shift();
+//     if (msg.type == 4) {
+//         try {
+//             device.bundleIdentifier = msg.payload.playerPath.client.bundleIdentifier;
+//             var els = device.bundleIdentifier.split('.')
+//             var nm = els[els.length - 1];
+//         } catch (err) {}
+//         if (msg && msg.payload && msg.payload.playbackState) {
+//             device.playing = msg.payload.playbackState == 1;
+//             device.lastMessage = JSON.parse(JSON.stringify(msg))
+//             _updatePlayState();
+//         }
+//         if (msg && msg.payload && msg.payload.playbackQueue && msg.payload.playbackQueue.contentItems && msg.payload.playbackQueue.contentItems.length > 0) {
+//             console.log('got playback item');
+//             device.playbackItem = JSON.parse(JSON.stringify(msg.payload.playbackQueue.contentItems[0]));
+//         }
+//     }
+// }
 
 async function connectToATV() {
     if (connecting) return;
     connecting = true;
-    setStatus("Connecting to ATV...");
-    $("#runningElements").show();
-    atv_credentials = JSON.parse(localStorage.getItem('atvcreds'))
+    try {
+        setStatus("Connecting to ATV...");
+        $("#runningElements").show();
+        atv_credentials = JSON.parse(localStorage.getItem('atvcreds'))
 
-    $("#pairingElements").hide();
+        $("#pairingElements").hide();
 
-    await ws_connect(atv_credentials);
-    createATVDropdown();
-    showKeyMap();
-    connecting = false;
+        await ws_connect(atv_credentials);
+        createATVDropdown();
+        showKeyMap();
+    } finally {
+        // Always reset connecting flag, even if connection fails
+        connecting = false;
+    }
 }
 
 var _connectToATV = lodash.debounce(connectToATV, 300);
