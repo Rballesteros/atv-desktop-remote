@@ -332,14 +332,6 @@ function registerHotkeys() {
                 win.webContents.send('shortcutWin');
             })
         })
-        // var ret = globalShortcut.registerAll(hotkeys, () => {
-        //     if (mb.window.isVisible()) {
-        //         hideWindow();
-        //     } else {
-        //         showWindow();
-        //     }
-        //     win.webContents.send('shortcutWin');
-        // })
         var ret = errs.every(el => { return el });
         if (!ret) {
             errs.forEach((err, idx) => {
