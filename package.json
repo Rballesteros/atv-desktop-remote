@@ -5,15 +5,15 @@
     "description": "ATV Remote - A menubar app to control Apple TV from your desktop",
     "productName": "ATV Remote",
     "license": "MIT",
-    "author": "bsharper",
+    "author": "Rodolfo Ballesteros",
     "repository": {
         "type": "git",
-        "url": "https://github.com/Rballesteros/atv-desktop-remote.git"
+        "url": "https://github.com/Rballesteros/atv-desktop-remote-enhanced.git"
     },
     "bugs": {
-        "url": "https://github.com/Rballesteros/atv-desktop-remote/issues"
+        "url": "https://github.com/Rballesteros/atv-desktop-remote-enhanced/issues"
     },
-    "homepage": "https://github.com/Rballesteros/atv-desktop-remote#readme",
+    "homepage": "https://github.com/Rballesteros/atv-desktop-remote-enhanced#readme",
     "build": {
         "productName": "ATV Remote",
         "appId": "com.electron.atvMacRemote",
@@ -28,23 +28,17 @@
     "scripts": {
         "embed": "node build/create_python_embed.js --overwrite",
         "start": "electron app",
-        "postinstall": "electron-builder install-app-deps",
+        "postinstall": "node build/patch-rebuild.js && electron-builder install-app-deps",
         "build": "npx electron-builder -m",
         "docker-build": "./electron_docker.sh 'npm run build:win'",
         "build:win": "npx electron-builder -w",
         "build-arm": "npx electron-builder -m --arm64"
     },
     "devDependencies": {
-        "electron": "^39.2.6",
+        "electron": "^39.3.0",
         "electron-builder": "^26.3.1"
     },
-    "dependencies": {
-        "@electron/remote": "^2.1.3",
-        "menubar": "github:Rballesteros/menubar-enhanced#master"
-    },
-    "pnpm": {
-        "onlyBuiltDependencies": [
-            "electron"
-        ]
+    "overrides": {
+        "tar": "7.5.6"
     }
 }

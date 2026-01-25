@@ -17,7 +17,7 @@ Download the latest version for your platform:
 - **macOS (Apple Silicon)**: Download `.dmg` for M1/M2/M3 Macs
 - **Windows**: Download `.exe` installer
 
-🔗 **[Download Latest Release](https://github.com/Rballesteros/atv-desktop-remote/releases/latest)**
+🔗 **[Download Latest Release](https://github.com/Rballesteros/atv-desktop-remote-enhanced/releases/latest)**
 
 ### Requirements
 - **Python 3.x** must be installed on your system
@@ -99,7 +99,7 @@ Subsequent launches are much faster (2-3 seconds).
 
 ### More Help
 - Check the [CHANGELOG.md](CHANGELOG.md) for technical details
-- Report issues at [GitHub Issues](https://github.com/Rballesteros/atv-desktop-remote/issues)
+- Report issues at [GitHub Issues](https://github.com/Rballesteros/atv-desktop-remote-enhanced/issues)
 
 ## Technology
 
