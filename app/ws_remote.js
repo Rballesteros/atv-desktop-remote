@@ -1,5 +1,87 @@
-const WebSocket = require('ws').WebSocket
-const EventEmitter = require('events');
+// Polyfill for EventEmitter
+class SimpleEventEmitter {
+    constructor() {
+        this.listeners = {};
+    }
+    on(event, callback) {
+        if (!this.listeners[event]) this.listeners[event] = [];
+        this.listeners[event].push(callback);
+        return this;
+    }
+    once(event, callback) {
+        const onceCallback = (...args) => {
+            this.removeListener(event, onceCallback);
+            callback.apply(this, args);
+        };
+        this.on(event, onceCallback);
+        return this;
+    }
+    removeListener(event, callback) {
+        if (!this.listeners[event]) return;
+        this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    }
+    removeAllListeners(event) {
+        if (event) {
+            delete this.listeners[event];
+        } else {
+            this.listeners = {};
+        }
+    }
+    emit(event, ...args) {
+        if (!this.listeners[event]) return;
+        this.listeners[event].forEach(cb => cb.apply(this, args));
+    }
+}
+
+// Polyfill for ws module using Native WebSocket
+class WebSocketShim extends SimpleEventEmitter {
+    constructor(url, options) {
+        super();
+        this.url = url;
+        this.nativeWs = new window.WebSocket(url);
+        this.CONNECTING = 0;
+        this.OPEN = 1;
+        this.CLOSING = 2;
+        this.CLOSED = 3;
+
+        this.nativeWs.onopen = () => {
+            this.emit('open');
+        };
+        this.nativeWs.onclose = (event) => {
+            this.emit('close', event.code, event.reason);
+        };
+        this.nativeWs.onmessage = (event) => {
+            this.emit('message', event.data);
+        };
+        this.nativeWs.onerror = (error) => {
+            this.emit('error', error);
+        };
+    }
+
+    get readyState() {
+        return this.nativeWs.readyState;
+    }
+
+    send(data) {
+        if (this.nativeWs.readyState === 1) {
+            this.nativeWs.send(data);
+        }
+    }
+
+    close() {
+        this.nativeWs.close();
+    }
+}
+// Add static constants
+WebSocketShim.CONNECTING = 0;
+WebSocketShim.OPEN = 1;
+WebSocketShim.CLOSING = 2;
+WebSocketShim.CLOSED = 3;
+
+// Use the Shim instead of require('ws')
+const WebSocket = WebSocketShim;
+const EventEmitter = SimpleEventEmitter;
+
 
 // WebSocketClient.prototype.reconnect = function(e) {
 //     console.log(`WebSocketClient: retry in ${this.autoReconnectInterval}ms`, e);
@@ -46,9 +128,7 @@ function sendMessage(command, data) {
 }
 
 function killServer() {
-    var lws = new WebSocket(ws_url, {
-        perMessageDeflate: false
-    });
+    var lws = new WebSocket(ws_url);
 
     lws.once('open', function open() {
         lws.send(JSON.stringify({ cmd: 'quit' }))
@@ -86,19 +166,23 @@ function reconnect() {
 }
 
 function startWebsocket() {
-    ws = new WebSocket(ws_url, {
-        perMessageDeflate: false
-    });
+    ws = new WebSocket(ws_url);
 
     ws.once('open', function open() {
         ws_connected = true;
         console.log('ws open');
         if (scanWhenOpen) ws_startScan();
         //sendMessage("scan");
-        checkEnv();
-        init().then(() => {
-            console.log('init complete');
-        })
+        if (typeof checkEnv === 'function') {
+            checkEnv();
+        } else {
+            console.warn("checkEnv not defined (web_remote.js failed?)");
+        }
+        if (typeof init === 'function') {
+            init().then(() => {
+                console.log('init complete');
+            });
+        }
     });
 
     ws.on('close', function close(code, reason) {

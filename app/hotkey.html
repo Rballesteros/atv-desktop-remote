@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Change Hotkey</title>
-    <script>
-        window.jQuery = window.$ = require('jquery');
-        require('./js/select2.min.js')($)
-    </script>
+    <script src="js/jquery-3.7.1.js"></script>
+    <script src="js/select2.min.js"></script>
     <link rel="stylesheet" href="css/pure-min.css">
     <link href="css/select2.min.css" rel="stylesheet" />
     <style>
@@ -79,29 +77,20 @@
             </div>
     </div>
     <script>
-        const path = require('path');
-        const MYPATH = path.join(process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + "/.local/share"), "ATV Remote");
-        const hotkeyPath = path.join(MYPATH, "hotkey.txt")
-        const fs = require('fs');
-        const remote = require('@electron/remote');
+        const electron = window.electron; // Use bridge
         
         function closeWindow() {
-            let window = remote.getCurrentWindow();
             window.close();
         }
 
-        function loadExistingHotkey() {
-            if (fs.existsSync(hotkeyPath)) {
-                var hotkeysStr = fs.readFileSync(hotkeyPath, 'utf8').trim();
+        async function loadExistingHotkey() {
+            const hotkeysStr = await electron.invoke('get-hotkeys');
+            if (hotkeysStr) {
                 var split_hotkeys = hotkeysStr.split(',').map(hk => hk.trim()).filter(hk => hk !== '');
                 split_hotkeys.forEach(function(hk) {
                     $('#all_hotkeys').append(createOption(hk, hk));
                 });
                 
-                // if(split_hotkeys.length > 0) {
-                //     var firstCombo = split_hotkeys[0].split('+');
-                //     $("#hotkeys").val(firstCombo).trigger("change");
-                // }
                 addHotkeyOption();
                 return true;
             }
@@ -137,14 +126,9 @@
             $('#all-parsed-hotkeys').val(hotkeys.join(','));
         }
 
-        function saveHotkey() {
+        async function saveHotkey() {
             var hotkeys = $('#all_hotkeys').val() || [];
-            if (hotkeys.length === 0) {
-                fs.unlinkSync(hotkeyPath);
-            } else {
-                
-                fs.writeFileSync(hotkeyPath, hotkeys.join(','));
-            }
+            await electron.invoke('save-hotkeys', hotkeys.join(','));
             closeWindow();
         }
 
@@ -227,11 +211,14 @@
                 e.preventDefault();
             });
             
-            if (!loadExistingHotkey()) {
-                $("#hotkeys").val(hotkeysFromParsed("Super+Shift+R")).trigger("change");
-            }
+            loadExistingHotkey().then(loaded => {
+                if (!loaded) {
+                    $("#hotkeys").val(hotkeysFromParsed("Super+Shift+R")).trigger("change");
+                }
+            });
+            
             $("#accellink").click(function() {
-                require('electron').shell.openExternal(this.href);
+                electron.shell.openExternal(this.href);
                 return false;
             });
         });

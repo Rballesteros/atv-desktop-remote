@@ -14,9 +14,34 @@
     <link rel="stylesheet" href="css/all.css">
     <link rel="stylesheet" id="s2style-sheet" href="css/select2.min.css">
     <script>
-        window.jQuery = window.$ = require('jquery');
-        require('./js/select2.min.js')($)
+        // Global Error Handler for Debugging
+        window.onerror = function(message, source, lineno, colno, error) {
+            if (window.electron && window.electron.invoke) {
+                window.electron.invoke('show-message-box', {
+                    type: 'error',
+                    title: 'Renderer Error',
+                    message: `Error: ${message}\nSource: ${source}:${lineno}:${colno}\nStack: ${error ? error.stack : 'N/A'}`
+                });
+            } else {
+                alert(`CRITICAL ERROR (No Bridge): ${message}\n${source}:${lineno}`);
+            }
+        };
+        window.addEventListener('unhandledrejection', function(event) {
+            if (window.electron && window.electron.invoke) {
+                window.electron.invoke('show-message-box', {
+                    type: 'error',
+                    title: 'Unhandled Rejection',
+                    message: `Reason: ${event.reason}`
+                });
+            } else {
+                alert(`CRITICAL PROMISE ERROR: ${event.reason}`);
+            }
+        });
     </script>
+    <script src="js/jquery-3.7.1.js"></script>
+    <script src="js/lodash.min.js"></script>
+    <script src="js/select2.min.js"></script>
+    <script src="js/popper.min.js"></script>
     <script src="js/tippy-headless.umd.min.js"></script>
     <script src="js/loader.js"></script>
 

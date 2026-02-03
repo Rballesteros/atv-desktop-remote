@@ -2,7 +2,6 @@ const { app, BrowserWindow, powerMonitor, Tray, Menu, nativeImage, globalShortcu
 var win;
 const { ipcMain } = require('electron')
 const path = require('path');
-require('@electron/remote/main').initialize()
 const menubar = require('menubar').menubar;
 const util = require('util');
 var secondWindow;
@@ -29,9 +28,16 @@ console._log = console.log;
 console.log = function() {
     let txt = util.format(...[].slice.call(arguments)) + '\n'
     process.stdout.write(txt);
-    // Check if webContents is destroyed before trying to send
-    if (win && win.webContents && !win.webContents.isDestroyed()) {
-        win.webContents.send('mainLog', txt);
+    // Guard against destroyed window/webContents during shutdown
+    if (!win) return;
+    try {
+        if (win.isDestroyed()) return;
+        const wc = win.webContents;
+        if (!wc || wc.isDestroyed()) return;
+        wc.send('mainLog', txt);
+    } catch (err) {
+        // Avoid crashing on late log calls while tearing down.
+        console._log('log-forwarding skipped (window destroyed)');
     }
 }
 
@@ -48,22 +54,17 @@ if (!gotTheLock) {
     })
 }
 function createHotkeyWindow() {
-    // TODO: Post-release security hardening (v1.5.0)
-    // - Set contextIsolation: true
-    // - Set nodeIntegration: false
-    // - Remove enableRemoteModule
-    // - Use preload.js with contextBridge
-    // - Refactor renderer to use IPC instead of require()
+    // Security Hardening Applied (v1.5.0)
     hotkeyWindow = new BrowserWindow({
         width: 500,
         height: 500,
         webPreferences: {
-            nodeIntegration: true,
-            enableRemoteModule: true,
-            contextIsolation: false
+            nodeIntegration: false,
+            enableRemoteModule: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
         }
     });
-    require("@electron/remote/main").enable(hotkeyWindow.webContents);
     hotkeyWindow.loadFile('hotkey.html');
     hotkeyWindow.setMenu(null);
     hotkeyWindow.on('close', (event) => {
@@ -74,14 +75,16 @@ function createHotkeyWindow() {
 }
 
 function createInputWindow() {
-    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
+    // Security Hardening Applied (v1.5.0)
     secondWindow = new BrowserWindow({
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            enableRemoteModule: true
+            nodeIntegration: false,
+            contextIsolation: true,
+            enableRemoteModule: false,
+            sandbox: false, // Ensure full access for preload script
+            preload: path.join(__dirname, 'preload.js')
         },
-        hide: true,
+        show: false,
         width: 520,
         height: 260,
         minWidth: 320,
@@ -93,7 +96,6 @@ function createInputWindow() {
         transparent: false,
         backgroundColor: '#111111'
     });
-    require("@electron/remote/main").enable(secondWindow.webContents);
     secondWindow.loadFile('input.html');
     secondWindow.on('close', (event) => {
         event.preventDefault();
@@ -109,8 +111,12 @@ function createInputWindow() {
 }
 
 function createWindow() {
-    // TODO: Post-release security hardening (v1.5.0) - Same as createHotkeyWindow
+    const preloadPath = path.join(__dirname, 'preload.js');
+    console.log("Preload path:", preloadPath);
+    
+    // Security Hardening Applied (v1.5.0)
     mb = menubar({
+        dir: __dirname, // Ensure menubar looks in the correct directory
         preloadWindow: preloadWindow,
         showDockIcon: false,
         browserWindow: {
@@ -122,15 +128,16 @@ function createWindow() {
             transparent: false,
             backgroundColor: '#111111',
             webPreferences: {
-                nodeIntegration: true,
-                enableRemoteModule: true,
-                contextIsolation: false
+                nodeIntegration: false,
+                enableRemoteModule: false,
+                contextIsolation: true,
+                sandbox: false, // Ensure full access for preload script
+                preload: preloadPath
             }
         }
     })
     global['MB'] = mb;
     mb.on(readyEvent, () => {
-        require("@electron/remote/main").enable(mb.window.webContents);
         win = mb.window;
        
         var webContents = win.webContents;
@@ -211,6 +218,96 @@ function createWindow() {
         ipcMain.handle('kbfocus', () => {
             win.webContents.send('kbfocus');
         })
+
+        // --- Security Refactoring Handlers ---
+        ipcMain.handle('show-message-box', async (event, options) => {
+            const { dialog } = require('electron');
+            return await dialog.showMessageBox(options);
+        });
+
+        ipcMain.handle('open-external', async (event, url) => {
+            const { shell } = require('electron');
+            return await shell.openExternal(url);
+        });
+
+        ipcMain.handle('get-hotkeys', (event) => {
+            const hotkeyPath = path.join(process.env['MYPATH'], "hotkey.txt");
+            if (fs.existsSync(hotkeyPath)) {
+                return fs.readFileSync(hotkeyPath, {encoding: 'utf-8'}).trim();
+            }
+            return null;
+        });
+
+        ipcMain.handle('save-hotkeys', (event, hotkeys) => {
+            const hotkeyPath = path.join(process.env['MYPATH'], "hotkey.txt");
+            if (!hotkeys || hotkeys.length === 0) {
+                if (fs.existsSync(hotkeyPath)) fs.unlinkSync(hotkeyPath);
+            } else {
+                fs.writeFileSync(hotkeyPath, hotkeys);
+            }
+            // Re-register immediately
+            registerHotkeys();
+            return true;
+        });
+
+        ipcMain.handle('resize-window', (event, width, height) => {
+            const win = BrowserWindow.fromWebContents(event.sender);
+            if (win) {
+                const [currentWidth] = win.getContentSize();
+                win.setContentSize(Math.max(currentWidth, width), height);
+            }
+        });
+
+        ipcMain.handle('should-use-dark-colors', () => {
+            const { nativeTheme } = require('electron');
+            return nativeTheme.shouldUseDarkColors;
+        });
+
+        ipcMain.handle('hide-dock', () => {
+            if (app.dock) app.dock.hide();
+        });
+
+        ipcMain.handle('show-window', () => {
+            showWindow();
+        });
+
+        // Debugging logger from renderer
+        ipcMain.on('log', (event, ...args) => {
+            console.log('[RENDERER]', ...args);
+        });
+        
+        ipcMain.handle('set-context-menu', (event, template) => {
+            // Reconstruct the menu from the template sent by renderer
+            // We need to map clicks back to IPC messages
+            const buildMenu = (items) => {
+                return items.map(item => {
+                    if (item.type === 'separator') return { type: 'separator' };
+                    
+                    const menuItem = {
+                        label: item.label,
+                        type: item.type,
+                        checked: item.checked,
+                        role: item.role,
+                        enabled: item.enabled
+                    };
+
+                    if (item.click) {
+                        menuItem.click = () => {
+                            event.sender.send('context-menu-click', item.id);
+                        };
+                    }
+                    
+                    if (item.submenu) {
+                        menuItem.submenu = buildMenu(item.submenu);
+                    }
+                    
+                    return menuItem;
+                });
+            };
+
+            const menu = Menu.buildFromTemplate(buildMenu(template));
+            mb.tray.popUpContextMenu(menu);
+        });
 
         // Store listener references for cleanup
         var powerResumeHandler = event => {

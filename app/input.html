@@ -8,9 +8,7 @@
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/pure-min.css">
     <link rel="stylesheet" href="css/all.css">
-    <script>
-        window.jQuery = window.$ = require('jquery');
-    </script>
+    <script src="js/jquery-3.7.1.js"></script>
 </head>
 
 <body class="input-page">
@@ -27,10 +25,8 @@
 
     <script>
         document.hidden = true;
-        const electron = require('electron')
-        const remote = require('@electron/remote');
-        const nativeTheme = remote.nativeTheme;
-        const { ipcRenderer } = require('electron');
+        const electron = window.electron;
+        const ipcRenderer = electron; // Alias
         var textInput = document.getElementById('textInput');
         var kbHasFocus = false;
         var kbFocusInterval;
@@ -46,6 +42,7 @@
             };
         }
         function _sendUpdatedText () {
+            console.log('Sending input-change:', textInput.value);
             ipcRenderer.send('input-change', textInput.value);
         }
         var sendUpdatedText = debounce(_sendUpdatedText, 100);
@@ -55,8 +52,13 @@
             console.log(`uimode update: ${uimode}`)
             var alwaysUseDarkMode = (uimode == "darkmode");
             var neverUseDarkMode = (uimode == "lightmode");
+            
+            var systemDark = false;
+            if (window.matchMedia) {
+                systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            }
 
-            if ((nativeTheme.shouldUseDarkColors || alwaysUseDarkMode) && (!neverUseDarkMode)) {
+            if ((systemDark || alwaysUseDarkMode) && (!neverUseDarkMode)) {
                 $("body").addClass("darkMode");
             } else {
                 $("body").removeClass("darkMode");

@@ -133,7 +133,8 @@ function parseLine(streamName, line) {
     if (!serverRunning && line.indexOf("server listening on") > -1) {
         announceServerStart();
     }
-    if (showOutputs) console.log(`SERVER.${streamName}: ${line}`)
+    // Force log output to debug startup issues
+    console.log(`SERVER.${streamName}: ${line}`)
 }
 
 function stopServer() {

@@ -11,7 +11,7 @@
     },
     "main": "main.js",
     "dependencies": {
-        "@electron/remote": "^2.1.3",
+        "@popperjs/core": "^2.11.8",
         "jquery": "^3.7.1",
         "menubar": "github:Rballesteros/menubar-enhanced#master",
         "ws": "^8.18.0"

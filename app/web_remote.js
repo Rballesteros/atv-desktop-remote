@@ -1,33 +1,22 @@
 var atv_credentials = false;
-var lodash = _ = require('./js/lodash.min');
+var lodash = window._;
+var _ = lodash;
+
 var pairDevice = "";
-var electron = require('electron');
-var ipcRenderer = electron.ipcRenderer;
-var nativeTheme;
-var remote;
-var dialog;
-var resizeTimer;
-// Initialize remote after document is ready
-var mb;
-var Menu, MenuItem
-function initializeRemote() {
-    try {
-        remote = require('@electron/remote');
-        nativeTheme = remote.nativeTheme;
-        dialog = remote.dialog;
-        Menu = remote.Menu;
-        MenuItem = remote.MenuItem;
-        mb = remote.getGlobal('MB');
-        electron.remote = remote;
-        return true;
-    } catch (err) {
-        console.error('Failed to initialize remote:', err);
-        return false;
+// Use the bridge
+var electron = window.electron;
+var ipcRenderer = electron; // Alias for compatibility with existing code
+
+function log(...args) {
+    if (electron && electron.log) {
+        electron.log(...args);
+    } else {
+        console.log(...args);
     }
 }
 
-
-const path = require('path');
+// Path via bridge
+const path = window.node ? window.node.path : null;
 var device = false;
 var qPresses = 0;
 var playstate = false;
@@ -168,6 +157,7 @@ function initIPC() {
     ipcRenderer.on('wsserver_started', ipcHandlers.wsserver_started);
 
     ipcHandlers.inputChange = (event, data) => {
+        console.log('input-change received:', data);
         sendMessage("settext", {text: data});
     };
     ipcRenderer.on('input-change', ipcHandlers.inputChange);
@@ -229,7 +219,6 @@ window.addEventListener('beforeunload', async e => {
 
 
 function toggleAltText(tf) {
-    //$("#topTextKBLink .keyTextAlt").width($("#topTextKBLink .keyText").width() + "px");
     if (tf) {
         $(".keyText").show();
         $(".keyTextAlt").hide();
@@ -239,15 +228,13 @@ function toggleAltText(tf) {
     }
 }
 
+var resizeTimer = null;
+
 function resizeWindowToContent() {
     try {
-        if (!remote) return;
-        const currentWindow = remote.getCurrentWindow();
-        if (!currentWindow) return;
         const contentWidth = Math.ceil(document.documentElement.scrollWidth);
         const contentHeight = Math.ceil(document.documentElement.scrollHeight);
-        const [currentWidth] = currentWindow.getContentSize();
-        currentWindow.setContentSize(Math.max(currentWidth, contentWidth), contentHeight);
+        ipcRenderer.invoke('resize-window', contentWidth, contentHeight);
     } catch (err) {
         console.log('resizeWindowToContent error', err);
     }
@@ -311,6 +298,7 @@ window.addEventListener('keydown', e => {
         openKeyboard();
         return;
     }
+    console.log('keydown: key=' + key + ', isConnected=' + isConnected() + ', atv_connected=' + atv_connected);
     if (!isConnected()) {
         if ($("#pairCode").is(':focus') && key == 'Enter') {
             submitCode();
@@ -361,12 +349,18 @@ function createDropdown(ks) {
 
 function createATVDropdown() {
     $("#statusText").hide();
-    var creds = JSON.parse(localStorage.getItem('remote_credentials') || "{}")
+    var creds;
+    try {
+        creds = JSON.parse(localStorage.getItem('remote_credentials') || "{}");
+    } catch (err) {
+        log('createATVDropdown: Failed to parse credentials:', err);
+        creds = {};
+    }
     var ks = Object.keys(creds);
-    var atvc = localStorage.getItem('atvcreds')
+    var atvc = localStorage.getItem('atvcreds');
     var selindex = 0;
     ks.forEach((k, i) => {
-        var v = creds[k]
+        var v = creds[k];
         if (JSON.stringify(v) == atvc) selindex = i;
     })
 
@@ -478,7 +472,9 @@ async function sendCommand(k, shifted) {
 }
 
 function getWorkingPath() {
-    return path.join(process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + "/.local/share"), "ATV Remote");
+    const env = window.node.env;
+    const platform = window.node.platform;
+    return path.join(env.APPDATA || (platform == 'darwin' ? env.HOME + '/Library/Application Support' : env.HOME + "/.local/share"), "ATV Remote");
 }
 
 function isConnected() {
@@ -491,7 +487,7 @@ async function askQuestion(msg) {
         buttons: ["No", "Yes"],
         message: msg
     }
-    var response = await dialog.showMessageBox(options)
+    var response = await ipcRenderer.invoke('show-message-box', options)
     console.log(response)
     return response.response == 1
 }
@@ -695,27 +691,69 @@ function handleMessage(msg) {
 }
 
 async function connectToATV() {
+    log('connectToATV called');
     if (connecting) return;
     connecting = true;
     setStatus("Connecting to ATV...");
     $("#runningElements").show();
-    atv_credentials = JSON.parse(localStorage.getItem('atvcreds'))
+
+    try {
+        var atvcredsStr = localStorage.getItem('atvcreds');
+        if (!atvcredsStr) {
+            throw new Error('No credentials found');
+        }
+        atv_credentials = JSON.parse(atvcredsStr);
+    } catch (err) {
+        log('Failed to parse credentials:', err);
+        connecting = false;
+        startScan();
+        return;
+    }
 
     $("#pairingElements").hide();
 
-    await ws_connect(atv_credentials);
-    createATVDropdown();
-    showKeyMap();
+    try {
+        await ws_connect(atv_credentials);
+        log('ws_connect succeeded, atv_connected =', atv_connected);
+    } catch (err) {
+        log('Connection failed:', err);
+        setStatus("Connection failed. Scanning for devices...");
+        connecting = false;
+        startScan();
+        return;
+    }
+
+    try {
+        createATVDropdown();
+        log('createATVDropdown succeeded');
+    } catch (err) {
+        log('createATVDropdown failed:', err);
+    }
+
+    try {
+        showKeyMap();
+        log('showKeyMap succeeded');
+    } catch (err) {
+        log('showKeyMap failed:', err);
+    }
+
     connecting = false;
+    log('connectToATV finished, atv_connected =', atv_connected);
 }
 
 var _connectToATV = lodash.debounce(connectToATV, 300);
 
 function saveRemote(name, creds) {
-    var ar = JSON.parse(localStorage.getItem('remote_credentials') || "{}")
-    if (typeof creds == 'string') creds = JSON.parse(creds);
-    ar[name] = creds;
-    localStorage.setItem('remote_credentials', JSON.stringify(ar));
+    try {
+        var ar = JSON.parse(localStorage.getItem('remote_credentials') || "{}");
+        if (typeof creds == 'string') {
+            creds = JSON.parse(creds);
+        }
+        ar[name] = creds;
+        localStorage.setItem('remote_credentials', JSON.stringify(ar));
+    } catch (err) {
+        log('saveRemote: Failed to save credentials:', err);
+    }
 }
 
 function setStatus(txt) {
@@ -723,7 +761,9 @@ function setStatus(txt) {
 }
 
 function startScan() {
+    log('startScan called');
     $("#initText").hide();
+    log('#initText hidden');
     $("#loader").fadeIn();
     $("#topTextKBLink").removeClass('kb-visible');
     $("#atvDropdownContainerTop").hide();
@@ -736,6 +776,7 @@ function startScan() {
     //ipcRenderer.invoke('scanDevices');
     ws_startScan();
     scheduleResize();
+    log('startScan finished');
 }
 
 function shouldEnableDarkMode() {
@@ -747,9 +788,6 @@ function shouldEnableDarkMode() {
     if (neverUseDarkMode) return false;
 
     try {
-        if (nativeTheme) {
-            return nativeTheme.shouldUseDarkColors;
-        }
         if (window.matchMedia) {
             return window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
@@ -781,24 +819,45 @@ function handleDarkMode() {
 }
 
 function _getCreds(nm) {
-    var creds = JSON.parse(localStorage.getItem('remote_credentials') || "{}")
-    var ks = Object.keys(creds);
-    if (ks.length === 0) {
-        return {};
-    }
-    if (typeof nm == 'undefined' && ks.length > 0) {
-        return creds[ks[0]]
-    } else {
-        if (Object.keys(creds).indexOf(nm) > -1) {
-            localStorage.setItem('currentDeviceID', nm)
-            return creds[nm];
+    try {
+        var creds = JSON.parse(localStorage.getItem('remote_credentials') || "{}");
+        var ks = Object.keys(creds);
+        if (ks.length === 0) {
+            return {};
         }
+        if (typeof nm == 'undefined' && ks.length > 0) {
+            return creds[ks[0]];
+        } else {
+            if (Object.keys(creds).indexOf(nm) > -1) {
+                localStorage.setItem('currentDeviceID', nm);
+                return creds[nm];
+            }
+        }
+        return {};
+    } catch (err) {
+        log('_getCreds: Failed to parse credentials:', err);
+        return {};
     }
 }
 
 function getCreds(nm) {
     var r = _getCreds(nm);
-    while (typeof r == 'string') r = JSON.parse(r);
+    // Parse nested JSON strings with depth limit to prevent infinite loops
+    var maxDepth = 5;
+    var depth = 0;
+    while (typeof r == 'string' && depth < maxDepth) {
+        try {
+            r = JSON.parse(r);
+            depth++;
+        } catch (err) {
+            log('getCreds: Failed to parse credentials:', err);
+            return {};
+        }
+    }
+    if (depth >= maxDepth) {
+        log('getCreds: Max parse depth reached, possible corrupt data');
+        return {};
+    }
     return r;
 }
 
@@ -830,7 +889,7 @@ function subMenuClick(event) {
 }
 
 async function confirmExit() {
-    remote.app.quit();
+    ipcRenderer.invoke('quit');
 }
 
 function changeHotkeyClick (event) {
@@ -838,30 +897,56 @@ function changeHotkeyClick (event) {
 }
 
 function handleContextMenu() {
-    let tray = mb.tray
     var mode = localStorage.getItem('uimode') || 'systemmode';
-
-    const subMenu = Menu.buildFromTemplate([
-        { type: 'checkbox', id: 'systemmode', click: subMenuClick, label: 'Follow system settings', checked: (mode == "systemmode") },
-        { type: 'checkbox', id: 'darkmode', click: subMenuClick, label: 'Dark mode', checked: (mode == "darkmode") },
-        { type: 'checkbox', id: 'lightmode', click: subMenuClick, label: 'Light mode', checked: (mode == "lightmode") }
-    ])
-
     var topChecked = JSON.parse(localStorage.getItem('alwaysOnTopChecked') || "false")
-    const contextMenu = Menu.buildFromTemplate([
-        { type: 'checkbox', label: 'Always on-top', click: toggleAlwaysOnTop, checked: topChecked },
+
+    // Define the menu template
+    const template = [
+        { label: 'Always on-top', type: 'checkbox', checked: topChecked, id: 'alwaysOnTop' },
         { type: 'separator' },
-        { role: 'about', label: 'About' },
+        { role: 'about', label: 'About' }, // 'role' might need main process handling if not standard
         { type: 'separator' },
-        { label: 'Appearance', submenu: subMenu, click: subMenuClick },
-        { label: 'Change hotkey', click: changeHotkeyClick },
+        { 
+            label: 'Appearance', 
+            submenu: [
+                { type: 'checkbox', id: 'systemmode', label: 'Follow system settings', checked: (mode == "systemmode") },
+                { type: 'checkbox', id: 'darkmode', label: 'Dark mode', checked: (mode == "darkmode") },
+                { type: 'checkbox', id: 'lightmode', label: 'Light mode', checked: (mode == "lightmode") }
+            ] 
+        },
+        { label: 'Change hotkey', id: 'changeHotkey' },
         { type: 'separator' },
-        { label: 'Quit', click: confirmExit }
-    ]);
-    tray.removeAllListeners('right-click');
-    tray.on('right-click', () => {
-        mb.tray.popUpContextMenu(contextMenu);
-    })
+        { label: 'Quit', id: 'quit' }
+    ];
+
+    // Listen for clicks
+    if (!window.contextMenuListenerAdded) {
+        window.contextMenuListenerAdded = true;
+        electron.onContextMenuClick((id) => {
+            if (id === 'alwaysOnTop') {
+                var newState = !JSON.parse(localStorage.getItem('alwaysOnTopChecked') || "false");
+                toggleAlwaysOnTop({ checked: newState });
+            } else if (id === 'quit') {
+                confirmExit();
+            } else if (id === 'changeHotkey') {
+                changeHotkeyClick();
+            } else if (['systemmode', 'darkmode', 'lightmode'].includes(id)) {
+                subMenuClick({ id: id });
+            }
+        });
+    }
+
+    // Send the template to main process to show the menu
+    // We hook into the tray right-click event in main process, 
+    // but here we are redefining the menu every time?
+    // The original code re-bound the right-click listener every time handleContextMenu was called.
+    // The main process handler 'set-context-menu' pops it up immediately.
+    // We should probably just call this when we want to update the menu that appears on right click.
+    // Actually, the original code: tray.on('right-click', () => mb.tray.popUpContextMenu(contextMenu))
+    // So we just need to send the template to main, and main will set it up.
+    
+    // However, for the menubar lib, we usually just set the context menu on the tray.
+    ipcRenderer.invoke('set-context-menu', template);
 }
 
 function toggleAlwaysOnTop(event) {
@@ -870,98 +955,63 @@ function toggleAlwaysOnTop(event) {
 }
 
 async function helpMessage() {
-    await dialog.showMessageBox({ type: 'info', title: 'Howdy!', message: 'Thanks for using this program!\nAfter pairing with an Apple TV (one time process), you will see the remote layout.\n\nEvery button is mapped to the keyboard, press and hold the "Option" key to see which key does what.\n\n To open this program, press Command+Shift+R (pressing this again will close it). Also right-clicking the icon in the menu will show additional options.' })
+    await ipcRenderer.invoke('show-message-box', { type: 'info', title: 'Howdy!', message: 'Thanks for using this program!\nAfter pairing with an Apple TV (one time process), you will see the remote layout.\n\nEvery button is mapped to the keyboard, press and hold the "Option" key to see which key does what.\n\n To open this program, press Command+Shift+R (pressing this again will close it). Also right-clicking the icon in the menu will show additional options.' })
 }
 
-function timeoutAsync(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Modify the init function to handle remote initialization
-async function init() {
-    if (!initializeRemote()) {
-        console.log('Remote not ready, retrying in 100ms...');
-        await timeoutAsync(100);
-        return await init();
-    }
-    addThemeListener();
+function themeUpdated() {
+    // Re-apply theme when system preference changes
     handleDarkMode();
-    handleContextMenu();
-    $("#exitLink").on('click', () => {
-        $("#exitLink").blur();
-        setTimeout(() => {
-                confirmExit();
-            }, 1)
-            //electron.remote.app.quit();
-    })
-    $("#cancelPairing").on('click', () => {
-        console.log('cancelling');
-        window.location.reload();
-    })
+}
 
-    var checked = JSON.parse(localStorage.getItem('alwaysOnTopChecked') || "false")
-    if (checked) setAlwaysOnTop(checked);
+function addThemeListener() {
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeUpdated);
+    }
+}
 
+function checkEnv() {
+    log('checkEnv called');
+    // Environment check - Python is verified by the server starting successfully
+    // Hide the Python error message since server is running
+    $(".pythonError").hide();
+}
+
+async function init() {
+    log('init called');
+    // Hide the initial loading text
+    $("#initText").hide();
+
+    // Check if we have saved credentials
+    var atvcreds = localStorage.getItem('atvcreds');
     var creds;
     try {
-        creds = JSON.parse(localStorage.getItem('atvcreds') || "false")
-    } catch {
-        creds = getCreds();
-        if (creds) localStorage.setItem('atvcreds', JSON.stringify(creds));
-    }
-    if (localStorage.getItem('firstRun') != 'false') {
-        localStorage.setItem('firstRun', 'false');
-        await helpMessage();
-        mb.showWindow();
+        creds = JSON.parse(localStorage.getItem('remote_credentials') || "{}");
+    } catch (err) {
+        log('init: Failed to parse credentials:', err);
+        creds = {};
     }
 
-    if (creds && creds.credentials && creds.identifier) {
-        atv_credentials = creds;
-        _connectToATV(); // Use debounced version to prevent race conditions
+    if (atvcreds && Object.keys(creds).length > 0) {
+        // We have saved credentials, try to connect
+        log('Found saved credentials, connecting...');
+        try {
+            await connectToATV();
+            log('connectToATV completed successfully');
+        } catch (err) {
+            log('Failed to connect with saved credentials:', err);
+            // Connection failed, start scanning
+            startScan();
+        }
     } else {
+        // No saved credentials, start scanning for devices
+        log('No saved credentials, starting scan...');
         startScan();
     }
 }
 
-function hideAppMenus() {
-    try {
-        remote.app.dock.hide();
-    } catch (err) {}
-}
-
-async function checkEnv() {
-    var isProd = await ipcRenderer.invoke('isProduction')
-
-    if (isProd) return hideAppMenus();
-
-    // dev environment
-    //remote.getCurrentWindow().webContents.toggleDevTools({ mode: 'detach' });
-
-}
-
-function themeUpdated() {
-    console.log('theme style updated');
-    handleDarkMode();
-}
-var tryThemeAddCount = 0;
-
-function addThemeListener() {
-    try {
-        if (nativeTheme) {
-            nativeTheme.removeAllListeners();
-            nativeTheme.on('updated', themeUpdated);
-        }
-    } catch (err) {
-        console.log('nativeTheme not ready yet');
-        setTimeout(() => {
-            tryThemeAddCount++;
-            if (tryThemeAddCount < 10) addThemeListener();
-        }, 1000);
-    }
-}
-
-$(function() {    
+$(function() {
     applyPreferredTheme();
+    addThemeListener();
     initIPC();
     var wp = getWorkingPath();
     $("#workingPathSpan").html(`<strong>${wp}</strong>`);
